@@ -1,8 +1,9 @@
-const CACHE = 'finger-pick-v1';
+const CACHE = 'finger-pick-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './sw.js',
   './icons/icon-192.png',
   './icons/icon-256.png',
   './icons/icon-512.png',
@@ -27,7 +28,6 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
@@ -35,7 +35,7 @@ self.addEventListener('fetch', (e) => {
     if (cached) return cached;
     try {
       const res = await fetch(e.request);
-      if (res && res.ok && (url.origin === location.origin)) {
+      if (res && res.ok && new URL(e.request.url).origin === location.origin) {
         cache.put(e.request, res.clone());
       }
       return res;

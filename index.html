@@ -183,12 +183,10 @@
         }
       }
 
-      // Countdown value & progress
-      let progress = 0;
+      // Update countdown text (no visual ring)
       if (selectionTimer && countdownStart){
         const remaining = Math.max(0, COUNTDOWN_MS - (now()-countdownStart));
         timerEl.textContent = `Sélection dans ${(remaining/1000).toFixed(1)} s`;
-        progress = 1 - (remaining / COUNTDOWN_MS);
       }
 
       // Sizes (rings under fingers)
@@ -212,32 +210,6 @@
         ctx.strokeStyle = (bgBaseColor !== BASE_BG && isWinner) ? '#ffffff' : f.color;
         ctx.beginPath();
         ctx.arc(f.x, f.y, R, 0, Math.PI*2);
-        ctx.stroke();
-      }
-
-      // Visual countdown ring around the timer text (top center)
-      if (selectionTimer && countdownStart){
-        // Position: around the timer text area near top center
-        const cx = canvas.width / 2;
-        const cy = 16 * ratio + (44 * ratio); // approximate y below top with some padding
-        const ringR = Math.max(28 * ratio, Math.min(canvas.width, canvas.height) * 0.06);
-        const lw = Math.max(6 * ratio, ringR * 0.12);
-
-        // track
-        ctx.beginPath();
-        ctx.arc(cx, cy, ringR, 0, Math.PI*2);
-        ctx.lineWidth = lw;
-        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-        ctx.stroke();
-
-        // progress arc (from -90°)
-        const startA = -Math.PI / 2;
-        const endA = startA + progress * Math.PI * 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, ringR, startA, endA);
-        ctx.lineWidth = lw;
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
         ctx.stroke();
       }
 

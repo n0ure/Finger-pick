@@ -100,7 +100,7 @@
       winnerId = keys[Math.floor(Math.random()*keys.length)];
       selectionMade = true;
 
-      // Trigger fade to winner color
+      // Trigger fade to winner color and keep it until reset
       const win = touches.get(winnerId);
       fadeToColor = win ? win.color : BASE_BG;
       fadeStart = now();
@@ -110,7 +110,7 @@
       for (const id of keys){
         if (id !== winnerId){ touches.delete(id); }
       }
-      timerEl.textContent = 'Gagnant ✅';
+      timerEl.textContent = 'Gagnant ✅ (Recommencer pour relancer)';
     }
     function fullReset(){
       touches.clear();
@@ -120,12 +120,15 @@
       bgBaseColor = BASE_BG;
       fadeToColor = null;
       fadeStart = 0;
+      timerEl.textContent = '';
     }
     resetBtn.addEventListener('click', fullReset);
 
     // Touch events
     function handleStart(ev){
       ev.preventDefault();
+      // If selection already made, ignore further touches until reset
+      if (selectionMade) return;
       for (const t of ev.changedTouches){
         const id = t.identifier;
         if (!touches.has(id)){
@@ -134,10 +137,11 @@
           touches.set(id, { x: t.clientX*ratio, y: t.clientY*ratio, color });
         }
       }
-      if (!selectionMade) scheduleSelection();
+      scheduleSelection();
     }
     function handleMove(ev){
       ev.preventDefault();
+      if (selectionMade) return;
       for (const t of ev.changedTouches){
         const id = t.identifier;
         const item = touches.get(id);
@@ -147,17 +151,12 @@
     }
     function handleEnd(ev){
       ev.preventDefault();
+      if (selectionMade) return; // keep winner color UNTIL reset, ignore touch ends
       for (const t of ev.changedTouches){
         touches.delete(t.identifier);
-        if (t.identifier === winnerId) { // si le gagnant lève le doigt, sortir du mode “gagnant”
-          winnerId = null; selectionMade = false;
-          fadeToColor = null; fadeStart = 0; bgBaseColor = BASE_BG;
-        }
       }
-      if (!selectionMade){
-        if (touches.size < 2) cancelSelection();
-        else scheduleSelection();
-      }
+      if (touches.size < 2) cancelSelection();
+      else scheduleSelection();
     }
     canvas.addEventListener('touchstart', handleStart, {passive:false});
     canvas.addEventListener('touchmove', handleMove, {passive:false});
@@ -170,7 +169,7 @@
       ctx.fillStyle = bgBaseColor;
       ctx.fillRect(0,0,canvas.width,canvas.height);
 
-      // If fading, draw overlay with easing alpha
+      // Fade overlay
       if (fadeToColor){
         const t = clamp01((now() - fadeStart) / FADE_MS);
         const a = easeOutCubic(t);
@@ -183,7 +182,7 @@
         }
       }
 
-      // Update countdown text (no visual ring)
+      // Update countdown text
       if (selectionTimer && countdownStart){
         const remaining = Math.max(0, COUNTDOWN_MS - (now()-countdownStart));
         timerEl.textContent = `Sélection dans ${(remaining/1000).toFixed(1)} s`;
@@ -196,7 +195,7 @@
       const R = radiusCSS * ratio;
       const baseRingW = R * 0.2;
 
-      // Draw touches
+      // Draw touches (if selection already made, only winner remains in map)
       for (const [id, f] of touches.entries()){
         // filled disc
         ctx.beginPath();

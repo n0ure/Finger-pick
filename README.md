@@ -1,8 +1,8 @@
-# Random Finger Chooser (PWA iPhone/Android) — v4
+# Random Finger Chooser (PWA iPhone/Android) — v5
 
-Changements :
-- **Plus d'anneau de progression** pour le compte à rebours (texte seul en haut).
-- On garde la **transition fondue** vers la couleur du gagnant.
-- Bouton **Recommencer** pour reset.
+Changement clé :
+- **La couleur gagnante reste affichée** jusqu'à ce que tu appuies sur **Recommencer**.
+- Touches ignorées après sélection (verrouillage) pour éviter toute modification accidentelle.
+- Cache Service Worker bump: `finger-pick-v5`.
 
-Déploiement : comme d'habitude (GitHub Pages, contenu à la racine). Pense à fermer/réouvrir l'app si tu avais une version précédente (cache v4).
+Déploiement : uploade le **contenu** du dossier à la racine du repo GitHub Pages.

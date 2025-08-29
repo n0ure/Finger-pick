@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Random Finger Chooser</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Finger Pick">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <style>
+    html, body { margin:0; height:100%; background:#111; color:#eee; font-family: system-ui, -apple-system, Roboto, Segoe UI, Arial, sans-serif; }
+    #c { display:block; width:100vw; height:100vh; touch-action:none; cursor:default; }
+    .hint { position:fixed; left:50%; top:16px; transform:translateX(-50%); opacity:.85; font-size:14px; background:#222; padding:8px 12px; border-radius:12px; -webkit-user-select:none; user-select:none; }
+    .timer { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); font-variant-numeric: tabular-nums; opacity:.9; -webkit-user-select:none; user-select:none; }
+    .btn { position:fixed; right:16px; bottom:16px; background:#333; border:1px solid #444; color:#eee; padding:10px 14px; border-radius:12px; -webkit-user-select:none; user-select:none; }
+    .a2hs { position:fixed; left:50%; bottom:64px; transform:translateX(-50%); background:#222; border:1px solid #333; border-radius:12px; padding:8px 12px; font-size:13px; opacity:.9; }
+    @media (display-mode: standalone) {
+      .a2hs { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="hint">Posez plusieurs doigts et attendez 3 s</div>
+  <div class="timer" id="timer"></div>
+  <button class="btn" id="resetBtn" hidden>Réinitialiser</button>
+  <div class="a2hs" id="a2hs">Astuce : dans Safari, bouton <b>Partager</b> → <b>Ajouter à l’écran d’accueil</b></div>
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const timerEl = document.getElementById('timer');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // PWA: enregistrement du Service Worker (pour offline)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(()=>{});
+      });
+    }
+
+    // Redimensionnement
+    function fit() { 
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(window.innerWidth * dpr); 
+      canvas.height = Math.floor(window.innerHeight * dpr); 
+    }
+    window.addEventListener('resize', fit, {passive:true}); fit();
+
+    // Palette de couleurs distinctes
+    const COLORS = ['#ff5a5f','#2ecc71','#3498db','#f1c40f','#9b59b6','#e67e22','#1abc9c','#e84393','#16a085','#e74c3c'];
+
+    // État
+    const touches = new Map(); // id -> {x,y,color}
+    let selectionTimer = null;
+    let countdownStart = 0;
+    const COUNTDOWN_MS = 3000;
+    let winnerId = null;
+    let selectionMade = false;
+
+    // Outils
+    function now(){ return performance.now(); }
+    function scheduleSelection(){
+      cancelSelection();
+      if (touches.size >= 2){
+        countdownStart = now();
+        selectionTimer = setTimeout(pickRandomWinner, COUNTDOWN_MS);
+      } else { timerEl.textContent = ''; }
+    }
+    function cancelSelection(){
+      if (selectionTimer){ clearTimeout(selectionTimer); selectionTimer = null; }
+      countdownStart = 0; timerEl.textContent = '';
+    }
+    function pickRandomWinner(){
+      if (touches.size === 0) return;
+      const keys = Array.from(touches.keys());
+      winnerId = keys[Math.floor(Math.random()*keys.length)];
+      selectionMade = true;
+      // Haptique (la plupart des iPhone ne supportent pas encore vibrate via Safari, c'est optionnel)
+      try { if (navigator.vibrate) navigator.vibrate([10,40,10]); } catch(e){}
+      // Supprime les perdants
+      for (const id of keys){
+        if (id !== winnerId){ touches.delete(id); }
+      }
+      resetBtn.hidden = false;
+      timerEl.textContent = 'Gagnant choisi ✅';
+    }
+    function fullReset(){
+      touches.clear();
+      winnerId = null;
+      selectionMade = false;
+      cancelSelection();
+      resetBtn.hidden = true;
+    }
+    resetBtn.addEventListener('click', fullReset);
+
+    // Gestion des événements tactiles
+    function handleStart(ev){
+      ev.preventDefault();
+      for (const t of ev.changedTouches){
+        const id = t.identifier;
+        if (!touches.has(id)){
+          const color = COLORS[(touches.size) % COLORS.length];
+          const dpr = window.devicePixelRatio || 1;
+          touches.set(id, { x: t.clientX*dpr, y: t.clientY*dpr, color });
+        }
+      }
+      if (!selectionMade) scheduleSelection();
+    }
+    function handleMove(ev){
+      ev.preventDefault();
+      for (const t of ev.changedTouches){
+        const id = t.identifier;
+        const item = touches.get(id);
+        const dpr = window.devicePixelRatio || 1;
+        if (item){ item.x = t.clientX*dpr; item.y = t.clientY*dpr; }
+      }
+    }
+    function handleEnd(ev){
+      ev.preventDefault();
+      for (const t of ev.changedTouches){
+        touches.delete(t.identifier);
+        if (t.identifier === winnerId) { // si le gagnant lève le doigt, on reset l’état
+          winnerId = null; selectionMade = false; resetBtn.hidden = true;
+        }
+      }
+      if (!selectionMade){
+        if (touches.size < 2) cancelSelection();
+        else scheduleSelection();
+      }
+    }
+    canvas.addEventListener('touchstart', handleStart, {passive:false});
+    canvas.addEventListener('touchmove', handleMove, {passive:false});
+    canvas.addEventListener('touchend', handleEnd, {passive:false});
+    canvas.addEventListener('touchcancel', handleEnd, {passive:false});
+
+    // Boucle de rendu
+    function draw(){
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      const radius = Math.min(canvas.width, canvas.height) * 0.06; // ~6% de l’écran
+
+      // Compte à rebours
+      if (selectionTimer && countdownStart){
+        const remaining = Math.max(0, COUNTDOWN_MS - (now()-countdownStart));
+        timerEl.textContent = `Sélection dans ${(remaining/1000).toFixed(1)} s`;
+      }
+
+      // Rendu des doigts
+      for (const [id, f] of touches.entries()){
+        // Cercle rempli léger
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, radius*0.7, 0, Math.PI*2);
+        ctx.fillStyle = f.color + '33'; // alpha
+        ctx.fill();
+
+        // Anneau
+        ctx.lineWidth = (id === winnerId) ? radius*0.22 : radius*0.12;
+        ctx.strokeStyle = f.color;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, radius, 0, Math.PI*2);
+        ctx.stroke();
+      }
+
+      requestAnimationFrame(draw);
+    }
+    draw();
+
+    // iOS: empêcher zoom sur double-tap
+    document.addEventListener('gesturestart', e => e.preventDefault());
+  </script>
+</body>
+</html>

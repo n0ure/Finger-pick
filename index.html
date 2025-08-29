@@ -24,7 +24,7 @@
 <body>
   <canvas id="c"></canvas>
   <div class="timer" id="timer"></div>
-  <div class="hint">Posez plusieurs doigts • Sélection auto après 3 s</div>
+  <div class="hint" id="hint">Posez plusieurs doigts • Sélection auto après 3 s</div>
   <button class="btn" id="resetBtn">Recommencer</button>
   <div class="a2hs" id="a2hs">Astuce : Safari → <b>Partager</b> → <b>Ajouter à l’écran d’accueil</b></div>
   <script>
@@ -33,12 +33,16 @@
     const ctx = canvas.getContext('2d', { alpha: false });
     const timerEl = document.getElementById('timer');
     const resetBtn = document.getElementById('resetBtn');
+    const hintEl = document.getElementById('hint');
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(()=>{});
       });
     }
+
+    const showHint = () => { if (hintEl) hintEl.style.display = ''; };
+    const hideHint = () => { if (hintEl) hintEl.style.display = 'none'; };
 
     function dpr(){ return window.devicePixelRatio || 1; }
     function fit(){
@@ -62,7 +66,7 @@
 
     // Background fade
     let bgBaseColor = BASE_BG;
-    let fadeToColor = null;      // hex string when fading to winner
+    let fadeToColor = null;
     let fadeStart = 0;
     const FADE_MS = 700;
 
@@ -86,6 +90,7 @@
       if (touches.size >= 2){
         countdownStart = now();
         selectionTimer = setTimeout(pickRandomWinner, COUNTDOWN_MS);
+        hideHint(); // ← retire le message dès que le décompte commence
       } else {
         timerEl.textContent = '';
       }
@@ -93,6 +98,8 @@
     function cancelSelection(){
       if (selectionTimer){ clearTimeout(selectionTimer); selectionTimer = null; }
       countdownStart = 0; timerEl.textContent = '';
+      // si on n'a pas sélectionné et qu'il reste <2 doigts, on ré-affiche l'aide
+      if (!selectionMade && touches.size < 2) showHint();
     }
     function pickRandomWinner(){
       if (touches.size === 0) return;
@@ -100,13 +107,11 @@
       winnerId = keys[Math.floor(Math.random()*keys.length)];
       selectionMade = true;
 
-      // Trigger fade to winner color and keep it until reset
       const win = touches.get(winnerId);
       fadeToColor = win ? win.color : BASE_BG;
       fadeStart = now();
 
       try { if (navigator.vibrate) navigator.vibrate([12,40,12]); } catch(e){}
-      // remove losers
       for (const id of keys){
         if (id !== winnerId){ touches.delete(id); }
       }
@@ -121,13 +126,13 @@
       fadeToColor = null;
       fadeStart = 0;
       timerEl.textContent = '';
+      showHint(); // ← ré-affiche le message après reset
     }
     resetBtn.addEventListener('click', fullReset);
 
     // Touch events
     function handleStart(ev){
       ev.preventDefault();
-      // If selection already made, ignore further touches until reset
       if (selectionMade) return;
       for (const t of ev.changedTouches){
         const id = t.identifier;
@@ -151,7 +156,7 @@
     }
     function handleEnd(ev){
       ev.preventDefault();
-      if (selectionMade) return; // keep winner color UNTIL reset, ignore touch ends
+      if (selectionMade) return;
       for (const t of ev.changedTouches){
         touches.delete(t.identifier);
       }
@@ -165,11 +170,9 @@
 
     // === Draw loop
     function draw(){
-      // Base background
       ctx.fillStyle = bgBaseColor;
       ctx.fillRect(0,0,canvas.width,canvas.height);
 
-      // Fade overlay
       if (fadeToColor){
         const t = clamp01((now() - fadeStart) / FADE_MS);
         const a = easeOutCubic(t);
@@ -182,28 +185,23 @@
         }
       }
 
-      // Update countdown text
       if (selectionTimer && countdownStart){
         const remaining = Math.max(0, COUNTDOWN_MS - (now()-countdownStart));
         timerEl.textContent = `Sélection dans ${(remaining/1000).toFixed(1)} s`;
       }
 
-      // Sizes (rings under fingers)
       const ratio = dpr();
       const cssMin = Math.min(window.innerWidth, window.innerHeight);
       const radiusCSS = Math.max(cssMin * 0.12, 52);
       const R = radiusCSS * ratio;
       const baseRingW = R * 0.2;
 
-      // Draw touches (if selection already made, only winner remains in map)
       for (const [id, f] of touches.entries()){
-        // filled disc
         ctx.beginPath();
         ctx.arc(f.x, f.y, R * 0.75, 0, Math.PI*2);
         ctx.fillStyle = (bgBaseColor !== BASE_BG && id === winnerId) ? '#00000022' : (f.color + '33');
         ctx.fill();
 
-        // ring
         const isWinner = (id === winnerId);
         ctx.lineWidth = Math.max(10*ratio, isWinner ? baseRingW*1.3 : baseRingW);
         ctx.strokeStyle = (bgBaseColor !== BASE_BG && isWinner) ? '#ffffff' : f.color;
@@ -216,7 +214,6 @@
     }
     draw();
 
-    // iOS: prevent unwanted gestures
     document.addEventListener('gesturestart', e => e.preventDefault());
   </script>
 </body>

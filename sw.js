@@ -1,4 +1,4 @@
-const CACHE = 'finger-pick-v2';
+const CACHE = 'finger-pick-v3';
 const ASSETS = [
   './',
   './index.html',

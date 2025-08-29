@@ -12,8 +12,8 @@
   <style>
     html, body { margin:0; height:100%; background:#111; color:#eee; font-family: system-ui, -apple-system, Roboto, Segoe UI, Arial, sans-serif; }
     #c { display:block; width:100vw; height:100vh; touch-action:none; cursor:default; }
-    .hint { position:fixed; left:50%; top:64px; transform:translateX(-50%); opacity:.85; font-size:14px; background:#222; padding:8px 12px; border-radius:12px; -webkit-user-select:none; user-select:none; }
-    .timer { position:fixed; left:50%; top:14px; transform:translateX(-50%); font-variant-numeric: tabular-nums; opacity:.95; font-weight:700; font-size:clamp(22px, 6vw, 40px); text-shadow:0 2px 6px rgba(0,0,0,.5); -webkit-user-select:none; user-select:none; }
+    .hint { position:fixed; left:50%; top:70px; transform:translateX(-50%); opacity:.85; font-size:14px; background:#222; padding:8px 12px; border-radius:12px; -webkit-user-select:none; user-select:none; }
+    .timer { position:fixed; left:50%; top:16px; transform:translateX(-50%); font-variant-numeric: tabular-nums; opacity:.98; font-weight:800; font-size:clamp(24px, 7vw, 44px); text-shadow:0 2px 6px rgba(0,0,0,.5); -webkit-user-select:none; user-select:none; }
     .btn { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); background:#333; border:1px solid #444; color:#eee; padding:12px 18px; border-radius:14px; font-weight:600; }
     .a2hs { position:fixed; left:50%; bottom:72px; transform:translateX(-50%); background:#222; border:1px solid #333; border-radius:12px; padding:8px 12px; font-size:13px; opacity:.9; }
     @media (display-mode: standalone) {
@@ -28,49 +28,67 @@
   <button class="btn" id="resetBtn">Recommencer</button>
   <div class="a2hs" id="a2hs">Astuce : Safari → <b>Partager</b> → <b>Ajouter à l’écran d’accueil</b></div>
   <script>
+    // === Setup
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d', { alpha: false });
     const timerEl = document.getElementById('timer');
     const resetBtn = document.getElementById('resetBtn');
-    let a2hsEl = document.getElementById('a2hs');
 
-    // PWA: Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(()=>{});
       });
     }
 
-    // DPR helpers
     function dpr(){ return window.devicePixelRatio || 1; }
-
-    // Resize canvas
-    function fit() { 
+    function fit(){
       const ratio = dpr();
-      canvas.width = Math.floor(window.innerWidth * ratio); 
-      canvas.height = Math.floor(window.innerHeight * ratio); 
+      canvas.width  = Math.floor(window.innerWidth * ratio);
+      canvas.height = Math.floor(window.innerHeight * ratio);
     }
     window.addEventListener('resize', fit, {passive:true}); fit();
 
+    // === Colors
     const COLORS = ['#ff5a5f','#2ecc71','#3498db','#f1c40f','#9b59b6','#e67e22','#1abc9c','#e84393','#16a085','#e74c3c'];
+    const BASE_BG = '#111111';
 
-    // State
+    // === State
     const touches = new Map(); // id -> {x,y,color}
     let selectionTimer = null;
     let countdownStart = 0;
     const COUNTDOWN_MS = 3000;
     let winnerId = null;
     let selectionMade = false;
-    let winScreenColor = null;
 
-    // Utils
+    // Background fade
+    let bgBaseColor = BASE_BG;
+    let fadeToColor = null;      // hex string when fading to winner
+    let fadeStart = 0;
+    const FADE_MS = 700;
+
+    // === Utils
     function now(){ return performance.now(); }
+    function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+    const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+    function hexToRgb(hex){
+      const s = hex.replace('#','');
+      const n = parseInt(s, 16);
+      if (s.length === 6) return {r:(n>>16)&255, g:(n>>8)&255, b:n&255};
+      return {r:17,g:17,b:17};
+    }
+    function rgbToCss({r,g,b}, a=1){
+      return a===1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`;
+    }
+
     function scheduleSelection(){
       cancelSelection();
       if (touches.size >= 2){
         countdownStart = now();
         selectionTimer = setTimeout(pickRandomWinner, COUNTDOWN_MS);
-      } else { timerEl.textContent = ''; }
+      } else {
+        timerEl.textContent = '';
+      }
     }
     function cancelSelection(){
       if (selectionTimer){ clearTimeout(selectionTimer); selectionTimer = null; }
@@ -81,9 +99,14 @@
       const keys = Array.from(touches.keys());
       winnerId = keys[Math.floor(Math.random()*keys.length)];
       selectionMade = true;
+
+      // Trigger fade to winner color
       const win = touches.get(winnerId);
-      winScreenColor = win ? win.color : '#111111';
+      fadeToColor = win ? win.color : BASE_BG;
+      fadeStart = now();
+
       try { if (navigator.vibrate) navigator.vibrate([12,40,12]); } catch(e){}
+      // remove losers
       for (const id of keys){
         if (id !== winnerId){ touches.delete(id); }
       }
@@ -93,8 +116,10 @@
       touches.clear();
       winnerId = null;
       selectionMade = false;
-      winScreenColor = null;
       cancelSelection();
+      bgBaseColor = BASE_BG;
+      fadeToColor = null;
+      fadeStart = 0;
     }
     resetBtn.addEventListener('click', fullReset);
 
@@ -124,8 +149,9 @@
       ev.preventDefault();
       for (const t of ev.changedTouches){
         touches.delete(t.identifier);
-        if (t.identifier === winnerId) { 
-          winnerId = null; selectionMade = false; winScreenColor = null;
+        if (t.identifier === winnerId) { // si le gagnant lève le doigt, sortir du mode “gagnant”
+          winnerId = null; selectionMade = false;
+          fadeToColor = null; fadeStart = 0; bgBaseColor = BASE_BG;
         }
       }
       if (!selectionMade){
@@ -138,39 +164,80 @@
     canvas.addEventListener('touchend', handleEnd, {passive:false});
     canvas.addEventListener('touchcancel', handleEnd, {passive:false});
 
-    // Drawing
+    // === Draw loop
     function draw(){
-      // Background: normal or winner color
-      ctx.fillStyle = winScreenColor || '#111';
+      // Base background
+      ctx.fillStyle = bgBaseColor;
       ctx.fillRect(0,0,canvas.width,canvas.height);
 
-      // Countdown text (top)
+      // If fading, draw overlay with easing alpha
+      if (fadeToColor){
+        const t = clamp01((now() - fadeStart) / FADE_MS);
+        const a = easeOutCubic(t);
+        const rgb = hexToRgb(fadeToColor);
+        ctx.fillStyle = rgbToCss(rgb, a);
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        if (t >= 1){
+          bgBaseColor = fadeToColor;
+          fadeToColor = null;
+        }
+      }
+
+      // Countdown value & progress
+      let progress = 0;
       if (selectionTimer && countdownStart){
         const remaining = Math.max(0, COUNTDOWN_MS - (now()-countdownStart));
         timerEl.textContent = `Sélection dans ${(remaining/1000).toFixed(1)} s`;
+        progress = 1 - (remaining / COUNTDOWN_MS);
       }
 
-      // Sizing: larger rings to be visible even under a finger
+      // Sizes (rings under fingers)
       const ratio = dpr();
       const cssMin = Math.min(window.innerWidth, window.innerHeight);
-      const radiusCSS = Math.max(cssMin * 0.12, 52); // 12% of short side, at least 52 CSS px
-      const R = radiusCSS * ratio;                   // device pixels
+      const radiusCSS = Math.max(cssMin * 0.12, 52);
+      const R = radiusCSS * ratio;
       const baseRingW = R * 0.2;
 
+      // Draw touches
       for (const [id, f] of touches.entries()){
-        // filled disc (semi-transparent)
+        // filled disc
         ctx.beginPath();
         ctx.arc(f.x, f.y, R * 0.75, 0, Math.PI*2);
-        ctx.fillStyle = (winScreenColor && id === winnerId) ? '#00000022' : (f.color + '33');
+        ctx.fillStyle = (bgBaseColor !== BASE_BG && id === winnerId) ? '#00000022' : (f.color + '33');
         ctx.fill();
 
         // ring
         const isWinner = (id === winnerId);
         ctx.lineWidth = Math.max(10*ratio, isWinner ? baseRingW*1.3 : baseRingW);
-        // Contrast if background already uses the winner color
-        ctx.strokeStyle = (winScreenColor && isWinner) ? '#ffffff' : f.color;
+        ctx.strokeStyle = (bgBaseColor !== BASE_BG && isWinner) ? '#ffffff' : f.color;
         ctx.beginPath();
         ctx.arc(f.x, f.y, R, 0, Math.PI*2);
+        ctx.stroke();
+      }
+
+      // Visual countdown ring around the timer text (top center)
+      if (selectionTimer && countdownStart){
+        // Position: around the timer text area near top center
+        const cx = canvas.width / 2;
+        const cy = 16 * ratio + (44 * ratio); // approximate y below top with some padding
+        const ringR = Math.max(28 * ratio, Math.min(canvas.width, canvas.height) * 0.06);
+        const lw = Math.max(6 * ratio, ringR * 0.12);
+
+        // track
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringR, 0, Math.PI*2);
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.stroke();
+
+        // progress arc (from -90°)
+        const startA = -Math.PI / 2;
+        const endA = startA + progress * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringR, startA, endA);
+        ctx.lineWidth = lw;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
         ctx.stroke();
       }
 
